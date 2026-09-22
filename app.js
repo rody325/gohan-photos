@@ -1,7 +1,7 @@
 'use strict';
 /* ごはん写真 — 写真はこの端末の IndexedDB にだけ保存する */
 (() => {
-  const VERSION = '1.8.0';
+  const VERSION = '1.9.0';
   const APP_ID = 'gohan-photos';
   const TRASH_DAYS = 30;
   const DAY = 864e5;
@@ -106,13 +106,19 @@
     _p: null,
     open() {
       return this._p || (this._p = new Promise((res, rej) => {
-        const r = indexedDB.open(APP_ID, 1);
+        // 版2で kv（バックアップの上書き先など、小さな値）を追加。meals などの中身はそのまま引き継がれる
+        const r = indexedDB.open(APP_ID, 2);
         r.onupgradeneeded = () => {
           const d = r.result;
-          for (const s of ['meals', 'photos', 'albums']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' });
+          for (const s of ['meals', 'photos', 'albums', 'kv']) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: 'id' });
         };
-        r.onsuccess = () => res(r.result);
+        r.onsuccess = () => {
+          // 新しい版のアプリが開いたら、この古いつながりは閉じて切り替えを邪魔しない
+          r.result.onversionchange = () => { r.result.close(); toast('新しい版になりました。アプリを開き直してください', 0); };
+          res(r.result);
+        };
         r.onerror = () => rej(r.error);
+        r.onblocked = () => toast('ほかの画面で開いている「ごはん写真」を閉じてください', 0);
       }));
     },
     async run(stores, mode, fn) {
@@ -1428,23 +1434,68 @@
       return;
     }
     if (stop) return;
-    const blob = zip.finish(), fname = `ごはん写真_バックアップ_${dayKey(Date.now())}.zip`;
-    const file = new File([blob], fname, { type: 'application/zip' });
+    // ファイル名は毎回同じ（上書きしやすいように日付は付けない）
+    const fname = 'ごはん写真_バックアップ.zip';
+    const blob = zip.finish(), file = new File([blob], fname, { type: 'application/zip' });
     const canShare = !!navigator.canShare?.({ files: [file] });
+    // 保存先を選ばせて書き込めるブラウザ（Android の Chrome 132 以降など）なら、前回のファイルに上書きできる
+    const canPick = typeof window.showSaveFilePicker === 'function';
+    let saved = null;
+    if (canPick) { try { saved = (await db.get('kv', 'backupHandle'))?.handle || null; } catch { saved = null; } }
     msg.textContent = `できました（写真 ${meta.meals.length}枚・${fmtSize(blob.size)}）`;
     $('.progress', sh).hidden = true;
     const done = $('[data-done]', sh);
     done.hidden = false;
-    done.innerHTML = `<p class="hint">このファイルを Google ドライブやパソコンにも移しておくと、スマホをなくしたときも安心です。</p>
-      <div class="btn-row">${canShare ? '<button class="btn" data-y="share">共有して保存</button>' : ''}<button class="btn primary" data-y="save">スマホに保存</button></div>`;
-    done.addEventListener('click', e => {
-      const y = e.target.closest('[data-y]')?.dataset.y;
-      if (!y) return;
+    done.innerHTML = canPick
+      ? (saved
+        ? `<button class="btn primary block" data-y="over">前回のファイルに上書き保存</button>
+           <p class="hint center">上書きする先：${esc(saved.name)}</p>
+           <button class="btn block" data-y="pick">別の場所に保存</button>`
+        : `<p class="hint">保存する場所を選んでください（例：「ダウンロード」や Google ドライブ）。次からは、同じファイルに上書きできます。</p>
+           <button class="btn primary block" data-y="pick">保存先を選んで保存</button>`)
+        + '<p class="hint">このファイルを Google ドライブやパソコンにも置いておくと、スマホをなくしたときも安心です。</p>'
+      : `<p class="hint">「共有して保存」→「ファイルに保存」で、前回と同じ場所を選ぶと、同じ名前のファイルを置き換えられます（iPhone のバージョンによっては別のファイルになるので、そのときは古いほうを消してください）。</p>
+         <div class="btn-row">${canShare ? '<button class="btn" data-y="share">共有して保存</button>' : ''}<button class="btn primary" data-y="save">スマホに保存</button></div>`;
+    const finished = text => {
       S.lastBackup = Date.now();
       saveS();
       dirty.add('photos');
-      if (y === 'save') { download(blob, fname); toast('保存しました（「ダウンロード」の中にあります）', 4000); }
-      else shareFiles([file]);
+      if (text) toast(text, 4500);
+    };
+    async function writeTo(handle) {
+      const opt = { mode: 'readwrite' };
+      if ((await handle.queryPermission?.(opt)) !== 'granted' && (await handle.requestPermission?.(opt)) !== 'granted') throw new Error('permission');
+      const w = await handle.createWritable();
+      await w.write(blob);
+      await w.close();
+    }
+    done.addEventListener('click', async e => {
+      const b = e.target.closest('[data-y]');
+      if (!b || b.disabled) return;
+      const y = b.dataset.y;
+      try {
+        if (y === 'over') {
+          b.disabled = true;
+          await writeTo(saved);
+          finished(`「${saved.name}」に上書きしました`);
+        } else if (y === 'pick') {
+          const h = await window.showSaveFilePicker({ suggestedName: fname, types: [{ description: 'ごはん写真のバックアップ', accept: { 'application/zip': ['.zip'] } }] });
+          b.disabled = true;
+          await writeTo(h);
+          await db.put('kv', { id: 'backupHandle', handle: h });
+          finished(`「${h.name}」に保存しました。次からは上書きできます`);
+        } else if (y === 'save') {
+          download(blob, fname);
+          finished('保存しました（「ダウンロード」の中にあります）');
+        } else if (y === 'share') {
+          finished();
+          shareFiles([file]);
+        }
+      } catch (err) {
+        b.disabled = false;
+        if (err?.name === 'AbortError') return; // 保存先を選ぶのをやめた
+        toast(y === 'over' ? '前回のファイルに書き込めませんでした（消したり移したりした場合など）。「別の場所に保存」を押してください' : '保存できませんでした', 6000);
+      }
     });
   }
   async function restoreFrom(file) {
@@ -1578,6 +1629,7 @@
         </ul>
         <h3>写真の保存場所とバックアップ</h3>
         <div class="box">写真は<b>このスマホの中だけ</b>に保存され、ネットには送られません。そのかわり、このアプリやブラウザのデータを消すと写真も消えます。<br>メニューの「バックアップ」で、ときどきファイルに書き出しておいてください。機種変更のときは、新しいスマホでこのアプリを開き、メニューの「復元」からそのファイルを選びます。</div>
+        <p>Android（Chrome）では、初回に「保存先を選んで保存」で場所を選ぶと、次からは「前回のファイルに上書き保存」で同じファイルを新しくできます（ファイルが増えません）。iPhone では、「共有して保存」→「ファイルに保存」で前回と同じ場所を選んでください。</p>
       </div></div>`);
     pushScreen(el);
   }
