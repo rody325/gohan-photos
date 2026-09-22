@@ -21,7 +21,7 @@
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --cols: 3;
-  --fs: 1.15; /* 文字の大きさの倍率（設定で 1 / 1.15 / 1.3 に切り替え） */
+  --fs: 1.3; /* 文字の大きさの倍率（最初は特大 1.3。設定で 1 / 1.15 / 1.3 に切り替え） */
   color-scheme: light dark;
 }
 
@@ -72,7 +72,7 @@ img { -webkit-user-drag: none; }
   overflow-y: auto; overscroll-behavior-y: contain;
   touch-action: pan-y;
   visibility: hidden;
-  padding-bottom: calc(var(--tabbar-h) + 110px + var(--safe-b));
+  padding-bottom: calc(var(--tabbar-h) + 130px + var(--safe-b));
 }
 .page.active { visibility: visible; }
 .hero {
@@ -160,12 +160,13 @@ img { -webkit-user-drag: none; }
   right: max(18px, calc(50% - 254px));
   bottom: calc(var(--tabbar-h) + 24px + var(--safe-b));
   display: grid; place-items: center;
-  width: 60px; height: 60px;
+  width: 76px; height: 76px;
   border: 0; border-radius: 50%;
   background: var(--accent); color: #fff;
   box-shadow: 0 8px 22px var(--accent-shadow);
 }
-.fab .ic { width: 28px; height: 28px; }
+.fab .ic { width: 42px; height: 42px; stroke-width: 2.6; }
+#photos-empty { padding-top: 16px; } /* 大きい＋ボタンに案内文がかからないよう、少し上に */
 .fab:active { transform: scale(.94); }
 body.selecting .tabbar, body.selecting .fab { visibility: hidden; }
 
@@ -179,7 +180,8 @@ body.selecting .tabbar, body.selecting .fab { visibility: hidden; }
 }
 #selbar h2 { flex: 1; margin: 0; font-size: calc(18px * var(--fs)); }
 body.selecting #selbar { display: flex; }
-#selactions { z-index: 45; display: none; grid-template-columns: repeat(3, 1fr); }
+#selactions { z-index: 45; display: none; grid-template-columns: repeat(4, 1fr); }
+#selactions button span { white-space: nowrap; }
 #selactions button { color: var(--text); }
 #selactions button:active { background: var(--pill); }
 body.selecting #selactions { display: grid; }
@@ -257,6 +259,10 @@ body.selecting #selactions { display: grid; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .a-top .icon-btn { width: 40px; height: 40px; margin: 0 2px; background: rgba(0, 0, 0, .28); color: #fff; }
+/* 前の画面に戻る「＜」は大きく・太く（押しやすく、見つけやすく） */
+.icon-btn[data-a="back"] { width: 52px; height: 52px; }
+.icon-btn[data-a="back"] .ic { width: 32px; height: 32px; stroke-width: 2.4; }
+.a-top .icon-btn[data-a="back"] { width: 48px; height: 48px; }
 .album-screen.collapsed .a-top { background: var(--bg); }
 .album-screen.collapsed .a-top h2 { opacity: 1; }
 .album-screen.collapsed .a-top .icon-btn,
@@ -471,16 +477,18 @@ textarea.inp { min-height: 5em; resize: vertical; }
 .dlg-btns .danger { color: var(--danger); }
 .toast {
   position: fixed; z-index: 70; left: 50%;
-  bottom: calc(var(--tabbar-h) + 100px + var(--safe-b));
+  bottom: calc(var(--tabbar-h) + 116px + var(--safe-b));
   display: flex; align-items: center; gap: 14px;
   width: max-content; max-width: calc(100% - 32px);
   padding: 12px 18px; border-radius: 18px;
   background: rgba(34, 34, 38, .95); color: #fff; font-size: calc(14px * var(--fs));
-  opacity: 0; transform: translate(-50%, 16px); pointer-events: none;
-  transition: opacity .2s, transform .2s;
+  opacity: 0; transform: translate(-50%, 16px); pointer-events: none; visibility: hidden;
+  transition: opacity .2s, transform .2s, visibility 0s .2s;
 }
-.toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); visibility: visible; transition: opacity .2s, transform .2s, visibility 0s; }
+/* お知らせの文字の部分は、下の写真などを押せるように素通りさせる。「元に戻す」は出ている間だけ押せる */
 .toast button { flex: none; padding: 0; border: 0; background: transparent; color: #ffb28a; font-weight: 700; }
+.toast.show button { pointer-events: auto; }
 .banner { margin: 6px 16px 10px; padding: 14px 16px; border-radius: 20px; background: var(--accent-weak); font-size: calc(14px * var(--fs)); line-height: 1.6; }
 .banner b { display: block; font-size: calc(15px * var(--fs)); }
 .banner .row { display: flex; gap: 8px; margin-top: 10px; }

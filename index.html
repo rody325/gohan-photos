@@ -15,7 +15,7 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="app.css">
-<script>/* 文字の大きさを、画面を描く前に当てる（一瞬だけ大きさが変わって見えるのを防ぐ） */try{var f={m:1,l:1.15,xl:1.3}[(JSON.parse(localStorage.getItem('gohan-settings'))||{}).font];if(f)document.documentElement.style.setProperty('--fs',f)}catch(e){}</script>
+<script>/* 文字の大きさを、画面を描く前に当てる（一瞬だけ大きさが変わって見えるのを防ぐ） */try{var s=JSON.parse(localStorage.getItem('gohan-settings'))||{},f=s.fontChosen?{m:1,l:1.15,xl:1.3}[s.font]:1.3;if(f)document.documentElement.style.setProperty('--fs',f)}catch(e){}</script>
 </head>
 <body>
 
@@ -32,7 +32,7 @@
     <div id="photos-grid"></div>
     <div class="empty" id="photos-empty" hidden>
       <span data-icon="bowl"></span>
-      <p><b>まだ写真がありません</b><br>右下のカメラボタンから<br>食事の写真を追加しましょう</p>
+      <p><b>まだ写真がありません</b><br>右下の「＋」から<br>食事の写真を<br>追加しましょう</p>
     </div>
   </section>
 
@@ -75,7 +75,7 @@
   <button data-tab="calendar" data-icon="calendar"><span>カレンダー</span></button>
   <button data-tab="menu" data-icon="menu"><span>メニュー</span></button>
 </nav>
-<button class="fab" id="fab" data-icon="camera" aria-label="写真を追加"></button>
+<button class="fab" id="fab" data-icon="plus" aria-label="写真を追加（スマホの写真から選ぶ）"></button>
 
 <div id="selbar">
   <button class="icon-btn" data-s="close" data-icon="close" aria-label="選択をやめる"></button>
@@ -83,14 +83,14 @@
   <button class="text-btn" data-s="all">すべて</button>
 </div>
 <div id="selactions">
-  <button data-s="album" data-icon="albums"><span>アルバムに追加</span></button>
+  <button data-s="fav" data-icon="heart"><span>お気に入り</span></button>
+  <button data-s="album" data-icon="albums"><span>アルバム</span></button>
   <button data-s="share" data-icon="share"><span>共有</span></button>
   <button data-s="del" data-icon="trash"><span>削除</span></button>
 </div>
 
 <div class="toast" id="toast" role="status"></div>
 
-<input type="file" id="file-camera" class="vh" accept="image/*" capture="environment" tabindex="-1">
 <input type="file" id="file-pick" class="vh" accept="image/*" multiple tabindex="-1">
 <input type="file" id="file-restore" class="vh" accept=".zip,application/zip" tabindex="-1">
 <input type="file" id="file-ocr-camera" class="vh" accept="image/*" capture="environment" tabindex="-1">

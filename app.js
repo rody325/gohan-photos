@@ -1,18 +1,30 @@
 'use strict';
 /* ごはん写真 — 写真はこの端末の IndexedDB にだけ保存する */
 (() => {
-  const VERSION = '1.5.0';
+  const VERSION = '1.8.0';
   const APP_ID = 'gohan-photos';
   const TRASH_DAYS = 30;
   const DAY = 864e5;
   const WEEK = ['日', '月', '火', '水', '木', '金', '土'];
-  // お弁当・外食は、押すだけでそのアルバムに入るボタン（どちらか1つ。記録には style として保存）
+  // 押すだけで入れたり外したりできるアルバム（いくつでも同時に選べる。記録には albums に 'q:〜' として保存）
   // ※「食事（朝・昼・夜）」と「どこで」の欄はなくした（2026-09-22）。前に記録した値は消さずに残している
   const QUICK = [
+    { k: 'mama', label: 'ママごはん', icon: 'mama' },
+    { k: 'papa', label: 'パパごはん', icon: 'papa' },
     { k: 'bento', label: 'お弁当', icon: 'bento' },
     { k: 'out', label: '外食', icon: 'out' },
+    { k: 'sweets', label: 'スイーツ', icon: 'sweets' },
   ];
-  const QUICK_LABEL = Object.fromEntries(QUICK.map(x => [x.k, x.label]));
+  const qid = k => 'q:' + k;
+  // 1.5.0 まではお弁当・外食を style に1つだけ入れていたので、それも「入っている」とみなす
+  const inQuick = (m, k) => m.albums.includes(qid(k)) || m.style === k;
+  function setQuick(m, k, on) {
+    m.albums = m.albums.filter(x => x !== qid(k));
+    if (m.style === k) m.style = null;
+    if (on) m.albums.push(qid(k));
+  }
+  const quickLabels = m => QUICK.filter(q => inQuick(m, q.k)).map(q => q.label);
+  const quickChipsHTML = m => `<div class="chips" data-f="quick">${QUICK.map(q => `<button class="chip ${inQuick(m, q.k) ? 'on' : ''}" data-v="${q.k}">${icon(q.icon)}${q.label}</button>`).join('')}</div>`;
   // 文字の大きさ（CSS の --fs に入れる倍率）
   const FONT_SCALES = { m: 1, l: 1.15, xl: 1.3 };
 
@@ -45,6 +57,9 @@
     recipe: '<path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3"/><path d="M9 7.5h6M9 11h6"/>',
     bento: '<rect x="3.5" y="6" width="17" height="13" rx="2.5"/><path d="M3.5 11.5h17M11 11.5V19"/><path d="M8 3.5h8"/>',
     out: '<path d="M7 3v8M5 3v4a2 2 0 0 0 4 0V3M7 11v10"/><path d="M17 21V3c-2 1.5-3 4-3 7v3h3"/>',
+    mama: '<circle cx="12" cy="8" r="3.6"/><path d="M8.5 9.5c-.6 2.2-1.8 3.3-3.5 3.6M15.5 9.5c.6 2.2 1.8 3.3 3.5 3.6"/><path d="M5 21a7 7 0 0 1 14 0"/>',
+    papa: '<circle cx="12" cy="7.5" r="3.6"/><path d="M5 21a7 7 0 0 1 14 0"/><path d="m12 14.5-1.3 2.2 1.3 3.8 1.3-3.8z"/>',
+    sweets: '<path d="M5.5 12h13l-1.6 8.5H7.1z"/><path d="M5.5 12a6.5 6.5 0 0 1 13 0"/><path d="M12 5.5V3.5M9.5 16h5"/>',
   };
 
   /* ---------- 小道具 ---------- */
@@ -77,12 +92,14 @@
   /* ---------- 設定（端末ごとの小さな値だけ） ---------- */
   const SKEY = 'gohan-settings';
   const S = Object.assign(
-    { quality: 'std', cols: 3, font: 'l', ocrDir: 'h', lastBackup: 0, snooze: 0, hideInstall: false },
+    { quality: 'std', cols: 3, font: 'xl', fontChosen: false, ocrDir: 'h', lastBackup: 0, snooze: 0, hideInstall: false },
     (() => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch { return {}; } })()
   );
+  // 文字の大きさは最初から「特大」。設定で自分で選ぶまでは特大にする（1.6.0 までに保存された「大きい」も特大に）
+  if (!S.fontChosen) S.font = 'xl';
   const saveS = () => { try { localStorage.setItem(SKEY, JSON.stringify(S)); } catch { /* 保存できなくても動作は続ける */ } };
   const applyCols = () => document.documentElement.style.setProperty('--cols', S.cols);
-  const applyFont = () => document.documentElement.style.setProperty('--fs', FONT_SCALES[S.font] || FONT_SCALES.l);
+  const applyFont = () => document.documentElement.style.setProperty('--fs', FONT_SCALES[S.font] || FONT_SCALES.xl);
 
   /* ---------- データベース ---------- */
   const db = {
@@ -252,7 +269,8 @@
   let toastTimer;
   function toast(msg, ms = 2600, action) {
     clearTimeout(toastTimer);
-    const hide = () => toastEl.classList.remove('show');
+    // 消すときは「元に戻す」の働きも外す（消えたあとに押されて、勝手に元に戻らないように）
+    const hide = () => { toastEl.classList.remove('show'); const b = toastEl.querySelector('button'); if (b) b.onclick = null; };
     toastEl.innerHTML = `<span>${esc(msg)}</span>${action ? `<button>${esc(action.label)}</button>` : ''}`;
     if (action) toastEl.querySelector('button').onclick = () => { hide(); action.fn(); };
     toastEl.classList.add('show');
@@ -561,8 +579,6 @@
     requestPersist();
   }
 
-  const chipsHTML = (f, items, cur) => `<div class="chips" data-f="${f}">${items.map(x => `<button class="chip ${cur === x.k ? 'on' : ''}" data-v="${x.k}">${x.icon ? icon(x.icon) : ''}${x.label}</button>`).join('')}</div>`;
-  const markChips = (box, v) => $$('.chip', box).forEach(c => c.classList.toggle('on', c.dataset.v === v));
 
   async function openAddSheet(file) {
     const t = toast('写真を読み込んでいます…', 0);
@@ -574,7 +590,7 @@
       <h3>食事を記録</h3>
       <div class="add-prev"><img src="${url}" alt=""></div>
       <div class="field"><div class="f-label">日時</div><input type="datetime-local" class="inp" data-f="date" value="${toInput(m.takenAt)}"></div>
-      <div class="field"><div class="f-label">アルバム（なくてもOK）</div>${chipsHTML('style', QUICK, m.style)}</div>
+      <div class="field"><div class="f-label">アルバム（いくつでも・なくてもOK）</div>${quickChipsHTML(m)}</div>
       <div class="field"><div class="f-label">メモ（なくてもOK）${micHTML('memo')}</div><textarea class="inp" data-f="memo" rows="2" maxlength="1000" placeholder="味の感想、量など"></textarea><div class="interim"></div></div>
       <div class="btn-row sticky"><button class="btn" data-x="cancel">やめる</button><button class="btn primary" data-x="save">保存</button></div>`,
     { cls: 'has-sticky', onClose: () => { stopMic(); URL.revokeObjectURL(url); } });
@@ -586,10 +602,11 @@
     });
     sh.addEventListener('click', async e => {
       if (handleMic(e, sh)) return;
-      const chip = e.target.closest('.chips[data-f="style"] .chip');
+      const chip = e.target.closest('.chips[data-f="quick"] .chip');
       if (chip) {
-        m.style = m.style === chip.dataset.v ? null : chip.dataset.v;
-        markChips(chip.parentElement, m.style);
+        const k = chip.dataset.v;
+        setQuick(m, k, !inQuick(m, k));
+        chip.classList.toggle('on', inQuick(m, k));
         return;
       }
       const x = e.target.closest('[data-x]')?.dataset.x;
@@ -607,17 +624,6 @@
     });
   }
 
-  function openAddMenu() {
-    const l = openSheet(`<h3>写真を追加</h3><div class="add-choices">
-      <button class="choice" data-x="camera">${icon('camera')}<b>カメラで撮る</b></button>
-      <button class="choice" data-x="pick">${icon('photos')}<b>写真から選ぶ</b><small>まとめて選べます</small></button></div>`);
-    l.el.addEventListener('click', e => {
-      const x = e.target.closest('[data-x]')?.dataset.x;
-      if (!x) return;
-      $(x === 'camera' ? '#file-camera' : '#file-pick').click();
-      back();
-    });
-  }
 
   /* ---------- 一覧（グリッド） ---------- */
   function groupMeals(list, by) {
@@ -645,7 +651,13 @@
   function renderGrid(box, list, by = 'day') {
     box._list = list;
     box.innerHTML = groupMeals(list, by).map(g => `<section class="grp">${groupHead(g, by)}<div class="grid">${g.items.map(m => tileHTML(m)).join('')}</div></section>`).join('');
-    if (sel.on && sel.box === box) $$('.tile', box).forEach(t => t.classList.toggle('selected', sel.ids.has(t.dataset.id)));
+    if (sel.on && sel.box === box) {
+      // 一覧から消えた写真（お気に入りから外した・ごみ箱に入れた など）は、選んだものからも外す
+      const shown = new Set(list.map(m => m.id));
+      sel.ids = new Set([...sel.ids].filter(id => shown.has(id)));
+      $$('.tile', box).forEach(t => t.classList.toggle('selected', sel.ids.has(t.dataset.id)));
+      toggleSel(null);
+    }
   }
   // タップで詳細、長押しで選択モード
   function bindGrid(box) {
@@ -721,6 +733,13 @@
         shareFiles(files);
       }
       if (s === 'del') back(() => trashMeals(ids));
+      if (s === 'fav') {
+        // 選んだ写真が全部お気に入りなら全部外し、そうでなければ全部お気に入りにする（選んだ状態はそのまま）
+        const ms = state.meals.filter(m => sel.ids.has(m.id)), all = ms.every(m => m.fav);
+        for (const m of ms) { m.fav = !all; await saveMeal(m); }
+        refresh();
+        toast(all ? `${ms.length}枚をお気に入りから外しました` : `${ms.length}枚をお気に入りにしました`);
+      }
     });
   }
 
@@ -803,7 +822,7 @@
       info.innerHTML = `
         <div class="info-date"><div><b>${md(m.takenAt, true)}</b><span>${hm(m.takenAt)}</span></div>
           <span class="date-edit">日時を変更<input type="datetime-local" data-f="date" value="${toInput(m.takenAt)}" aria-label="日時"></span></div>
-        <div class="field"><div class="f-label">アルバム</div>${chipsHTML('style', QUICK, m.style)}
+        <div class="field"><div class="f-label">アルバム（いくつでも選べます）</div>${quickChipsHTML(m)}
           <div class="chips mine">${albums.map(a => `<span class="chip in">${icon('albums')}${esc(a.name)}</span>`).join('')}<button class="chip add" data-act="album">＋ 自分のアルバムに追加</button></div></div>
         <div class="field"><div class="f-label">お店・場所</div><input class="inp" data-f="place" maxlength="60" placeholder="例：〇〇食堂、職場" value="${esc(m.place)}"></div>
         <div class="field"><div class="f-label">メモ${micHTML('memo')}</div><textarea class="inp" data-f="memo" rows="3" maxlength="1000" placeholder="味の感想、量、体調など">${esc(m.memo)}</textarea><div class="interim"></div></div>
@@ -829,10 +848,11 @@
 
     info.addEventListener('click', async e => {
       if (handleMic(e, info)) return;
-      const chip = e.target.closest('.chips[data-f="style"] .chip');
+      const chip = e.target.closest('.chips[data-f="quick"] .chip');
       if (chip) {
-        cur.style = cur.style === chip.dataset.v ? null : chip.dataset.v;
-        markChips(chip.parentElement, cur.style);
+        const k = chip.dataset.v;
+        setQuick(cur, k, !inQuick(cur, k));
+        chip.classList.toggle('on', inQuick(cur, k));
         await saveMeal(cur);
         renderHead();
         refresh();
@@ -1015,11 +1035,13 @@
   }
 
   /* ---------- アルバム ---------- */
-  // 自動でまとまるアルバムはこの4つだけ（ユーザー指定の順）。朝ごはん・自炊などのアルバムは作らない
+  // アルバムタブの「よく見るアルバム」（2列。ユーザー指定の並び）
+  //   ママごはん | パパごはん / お弁当 | 外食 / レシピ | スイーツ / お気に入り
+  const quickAlbum = k => { const q = QUICK.find(x => x.k === k); return { id: qid(k), name: q.label, icon: q.icon, f: m => inQuick(m, k) }; };
   const SMART = [
-    { id: 'style:bento', name: 'お弁当', icon: 'bento', f: m => m.style === 'bento' },
-    { id: 'style:out', name: '外食', icon: 'out', f: m => m.style === 'out' },
-    { id: 'recipe', name: 'レシピ', icon: 'recipe', f: m => !!m.recipe.trim() },
+    quickAlbum('mama'), quickAlbum('papa'),
+    quickAlbum('bento'), quickAlbum('out'),
+    { id: 'recipe', name: 'レシピ', icon: 'recipe', f: m => !!m.recipe.trim() }, quickAlbum('sweets'),
     { id: 'fav', name: 'お気に入り', icon: 'heart', f: m => m.fav },
   ];
   function albumDef(id) {
@@ -1115,16 +1137,23 @@
     const box = $('.pick-list', l.el);
     const row = (attr, n, name) => `<button class="pick ${n === ms.length ? 'on' : n ? 'part' : ''}" ${attr}><span class="pk">${icon('check')}</span>${esc(name)}</button>`;
     function render() {
-      box.innerHTML = QUICK.map(q => row(`data-quick="${q.k}"`, ms.filter(m => m.style === q.k).length, q.label)).join('')
+      box.innerHTML = QUICK.map(q => row(`data-quick="${q.k}"`, ms.filter(m => inQuick(m, q.k)).length, q.label)).join('')
+        + row('data-fav', ms.filter(m => m.fav).length, 'お気に入り')
         + state.albums.map(a => row(`data-id="${a.id}"`, ms.filter(m => m.albums.includes(a.id)).length, a.name)).join('');
     }
     render();
     l.el.addEventListener('click', async e => {
       const q = e.target.closest('.pick[data-quick]');
       if (q) {
-        // お弁当・外食はどちらか1つ。全部に付いていれば外し、そうでなければ全部に付ける
-        const k = q.dataset.quick, all = ms.every(m => m.style === k);
-        for (const m of ms) { m.style = all ? null : k; await saveMeal(m); }
+        // 選んだ写真が全部入っていれば外し、そうでなければ全部に入れる
+        const k = q.dataset.quick, all = ms.every(m => inQuick(m, k));
+        for (const m of ms) { setQuick(m, k, !all); await saveMeal(m); }
+        render(); refresh(); onChange?.();
+        return;
+      }
+      if (e.target.closest('.pick[data-fav]')) {
+        const all = ms.every(m => m.fav);
+        for (const m of ms) { m.fav = !all; await saveMeal(m); }
         render(); refresh(); onChange?.();
         return;
       }
@@ -1194,7 +1223,7 @@
       $('.sub', el).textContent = list.length ? `写真 ${list.length}枚` : '記録なし';
       // 撮った時刻の順に並べる（朝・昼・夜の区切りはなくした）
       body.innerHTML = list.length
-        ? `<div class="dcards day">${list.map(m => `<button class="dcard" data-id="${m.id}"><img src="${thumbURL(m)}" alt="" loading="lazy"><div class="dm"><div class="t">${hm(m.takenAt)}${QUICK_LABEL[m.style] ? '・' + QUICK_LABEL[m.style] : ''}${m.place ? '・' + esc(m.place) : ''}</div>${m.memo ? `<p>${esc(m.memo)}</p>` : ''}${m.recipe.trim() ? '<span class="rc">レシピあり</span>' : ''}</div></button>`).join('')}</div>`
+        ? `<div class="dcards day">${list.map(m => `<button class="dcard" data-id="${m.id}"><img src="${thumbURL(m)}" alt="" loading="lazy"><div class="dm"><div class="t">${[hm(m.takenAt), ...quickLabels(m)].join('・')}${m.place ? '・' + esc(m.place) : ''}</div>${m.memo ? `<p>${esc(m.memo)}</p>` : ''}${m.recipe.trim() ? '<span class="rc">レシピあり</span>' : ''}</div></button>`).join('')}</div>`
         : '<div class="dnone">この日の記録はありません</div>';
     }
     body.addEventListener('click', e => {
@@ -1209,7 +1238,7 @@
 
   /* ---------- 検索 ---------- */
   function haystack(m) {
-    return [m.memo, m.recipe, m.recipe.trim() && 'レシピ', m.place, ...m.tags, QUICK_LABEL[m.style], md(m.takenAt, true),
+    return [m.memo, m.recipe, m.recipe.trim() && 'レシピ', m.place, ...m.tags, ...quickLabels(m), m.fav && 'お気に入り', md(m.takenAt, true),
       ...state.albums.filter(a => m.albums.includes(a.id)).map(a => a.name)].filter(Boolean).join(' ').toLowerCase();
   }
   function openSearch() {
@@ -1224,7 +1253,7 @@
         const count = new Map();
         live().forEach(m => m.tags.forEach(t => count.set(t, (count.get(t) || 0) + 1)));
         const tags = [...count].sort((a, b) => b[1] - a[1]).slice(0, 10).map(x => '#' + x[0]);
-        sugg.innerHTML = `<div class="f-label">よく使う言葉</div><div class="chips">${[...QUICK.map(x => x.label), 'レシピ', ...tags].map(w => `<button class="chip" data-w="${esc(w.replace(/^#/, ''))}">${esc(w)}</button>`).join('')}</div>`;
+        sugg.innerHTML = `<div class="f-label">よく使う言葉</div><div class="chips">${[...QUICK.map(x => x.label), 'レシピ', 'お気に入り', ...tags].map(w => `<button class="chip" data-w="${esc(w.replace(/^#/, ''))}">${esc(w)}</button>`).join('')}</div>`;
         sugg.hidden = false; res.innerHTML = ''; res._list = []; empty.hidden = true;
         return;
       }
@@ -1497,6 +1526,7 @@
       if (b) {
         const key = b.parentElement.dataset.s;
         S[key] = key === 'cols' ? +b.dataset.v : b.dataset.v;
+        if (key === 'font') S.fontChosen = true;
         saveS(); applyCols(); applyFont();
         $$('button', b.parentElement).forEach(x => x.classList.toggle('on', x === b));
         return;
@@ -1524,10 +1554,10 @@
       <div class="sbar"><button class="icon-btn" data-a="back" aria-label="戻る">${icon('back')}</button><h2>使い方</h2></div>
       <div class="doc">
         <h3>写真を追加する</h3>
-        <p>右下のカメラボタンから「カメラで撮る」か「写真から選ぶ」を選びます。写真から選ぶときは、何枚でもまとめて追加できます。</p>
+        <p>右下の大きい「＋」ボタンを押すと、スマホの写真を選ぶ画面が開きます。何枚でもまとめて追加できます。1枚だけ選んだときは、日時やアルバム・メモを付けてから保存できます。</p>
         <h3>メモやアルバムを付ける</h3>
-        <p>写真を開いて上にスワイプすると、詳細が出ます。アルバム（お弁当・外食）、お店、メモ、レシピ、タグを付けられます。左右にスワイプすると前後の写真に移ります。</p>
-        <p>レシピを書いた食事は、アルバムの「レシピ」にまとまります。詳細や記録の画面の「アルバム」で「お弁当」「外食」を押すと、同じ名前のアルバムに入ります（もう一度押すと外れます）。</p>
+        <p>写真を開いて上にスワイプすると、詳細が出ます。アルバム（ママごはん・パパごはん・お弁当・外食・スイーツ）、お店、メモ、レシピ、タグを付けられます。左右にスワイプすると前後の写真に移ります。</p>
+        <p>レシピを書いた食事は、アルバムの「レシピ」にまとまります。詳細や記録の画面の「アルバム」で「ママごはん」「パパごはん」「お弁当」「外食」「スイーツ」を押すと、同じ名前のアルバムに入ります。いくつでも同時に選べて、もう一度押すと外れます。♡を押した写真は「お気に入り」にまとまります。</p>
         <h3>文字の大きさ</h3>
         <p>メニューの「設定」→「文字の大きさ」で、標準・大きい・特大から選べます。</p>
         <h3>写真の文字を読み取る</h3>
@@ -1540,7 +1570,7 @@
         <p>このボタンが使えないときは、キーボードのマイクボタンでも話して入力できます（この場合は自動で直りません）。</p>
         <p>話した声は、スマホの音声認識（Android は Google、iPhone は Apple）で文字に変えられます。写真は送られません。</p>
         <h3>まとめて操作する</h3>
-        <p>一覧の写真を長押しすると選択モードになり、アルバムへの追加・共有・削除をまとめてできます。</p>
+        <p>一覧の写真を長押しすると選択モードになり、お気に入り・アルバムへの追加・共有・削除をまとめてできます。選んだ写真が全部お気に入りのときに「お気に入り」を押すと、まとめて外れます。</p>
         <h3>ホーム画面に追加する</h3>
         <ul>
           <li><b>Android（Chrome）</b>：右上の「︙」→「ホーム画面に追加」または「アプリをインストール」</li>
@@ -1581,11 +1611,10 @@
   function bind() {
     $$('[data-icon]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.icon)));
     $('.tabbar').addEventListener('click', e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); });
-    $('#fab').addEventListener('click', openAddMenu);
-    for (const id of ['#file-camera', '#file-pick']) {
-      const inp = $(id);
-      inp.addEventListener('change', () => { const f = [...inp.files]; inp.value = ''; addFiles(f); });
-    }
+    // 右下の＋ボタンは、押すとすぐスマホの写真を選ぶ画面を開く（何枚でも選べる。カメラで撮る選択肢はなくした）
+    const pick = $('#file-pick');
+    $('#fab').addEventListener('click', () => pick.click());
+    pick.addEventListener('change', () => { const f = [...pick.files]; pick.value = ''; addFiles(f); });
     for (const id of ['#file-ocr-camera', '#file-ocr-pick']) {
       const inp = $(id);
       inp.addEventListener('change', () => { const f = inp.files[0]; inp.value = ''; if (f) runOcr(f); });
