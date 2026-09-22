@@ -1,7 +1,7 @@
 // ごはん写真 — オフラインでも開けるように、アプリの画面ファイルだけを保存しておく
 // （写真は IndexedDB にあるので、ここでは扱わない）
 // アプリを直したら CACHE の番号を上げる
-const CACHE = 'gohan-v13';
+const CACHE = 'gohan-v14';
 const FILES = [
   './',
   './index.html',

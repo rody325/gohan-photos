@@ -1,7 +1,7 @@
 'use strict';
 /* ごはん写真 — 写真はこの端末の IndexedDB にだけ保存する */
 (() => {
-  const VERSION = '1.9.0';
+  const VERSION = '1.9.1';
   const APP_ID = 'gohan-photos';
   const TRASH_DAYS = 30;
   const DAY = 864e5;
@@ -1454,8 +1454,13 @@
         : `<p class="hint">保存する場所を選んでください（例：「ダウンロード」や Google ドライブ）。次からは、同じファイルに上書きできます。</p>
            <button class="btn primary block" data-y="pick">保存先を選んで保存</button>`)
         + '<p class="hint">このファイルを Google ドライブやパソコンにも置いておくと、スマホをなくしたときも安心です。</p>'
-      : `<p class="hint">「共有して保存」→「ファイルに保存」で、前回と同じ場所を選ぶと、同じ名前のファイルを置き換えられます（iPhone のバージョンによっては別のファイルになるので、そのときは古いほうを消してください）。</p>
-         <div class="btn-row">${canShare ? '<button class="btn" data-y="share">共有して保存</button>' : ''}<button class="btn primary" data-y="save">スマホに保存</button></div>`;
+      : canShare
+        // iPhone など：「共有して保存」だけ（「スマホに保存」は出さない。2026-09-23 ユーザー指示）
+        ? `<p class="hint">「共有して保存」→「ファイルに保存」で、前回と同じ場所を選んでください。同じ名前のファイルを置き換えられます（iPhone のバージョンによっては別のファイルになるので、そのときは古いほうを消してください）。</p>
+           <button class="btn primary block" data-y="share">共有して保存</button>`
+        // 保存先も選べず共有もできないブラウザだけ、保存できなくならないよう「スマホに保存」を残す
+        : `<p class="hint">「ダウンロード」に保存します。</p>
+           <button class="btn primary block" data-y="save">スマホに保存</button>`;
     const finished = text => {
       S.lastBackup = Date.now();
       saveS();
