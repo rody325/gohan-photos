@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fff8f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#100c0a" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="ごはん写真">
+<meta name="description" content="食事の写真を保存して、日付・アルバム・カレンダーで見返すアプリ">
+<title>ごはん写真</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
+<script>/* 文字の大きさを、画面を描く前に当てる（一瞬だけ大きさが変わって見えるのを防ぐ） */try{var f={m:1,l:1.15,xl:1.3}[(JSON.parse(localStorage.getItem('gohan-settings'))||{}).font];if(f)document.documentElement.style.setProperty('--fs',f)}catch(e){}</script>
+</head>
+<body>
+
+<main id="main">
+  <!-- 写真タブ -->
+  <section class="page active" id="page-photos">
+    <header class="hero"><h1>写真</h1><p id="photos-sub"></p></header>
+    <div class="toolbar">
+      <span class="tb-title">写真</span>
+      <button class="icon-btn" data-a="search" data-icon="search" aria-label="検索"></button>
+      <button class="icon-btn" data-a="photos-more" data-icon="more" aria-label="その他"></button>
+    </div>
+    <div id="banner"></div>
+    <div id="photos-grid"></div>
+    <div class="empty" id="photos-empty" hidden>
+      <span data-icon="bowl"></span>
+      <p><b>まだ写真がありません</b><br>右下のカメラボタンから<br>食事の写真を追加しましょう</p>
+    </div>
+  </section>
+
+  <!-- アルバムタブ -->
+  <section class="page" id="page-albums">
+    <header class="hero"><h1>アルバム</h1><p></p></header>
+    <div class="toolbar">
+      <span class="tb-title">アルバム</span>
+      <button class="icon-btn" data-a="new-album" data-icon="plus" aria-label="新しいアルバム"></button>
+      <button class="icon-btn" data-a="search" data-icon="search" aria-label="検索"></button>
+    </div>
+    <h3 class="sec-h">よく見るアルバム</h3>
+    <div class="acards big" id="albums-smart"></div>
+    <h3 class="sec-h">マイアルバム</h3>
+    <div class="acards" id="albums-mine"></div>
+  </section>
+
+  <!-- カレンダータブ -->
+  <section class="page" id="page-calendar">
+    <header class="hero"><h1>カレンダー</h1><p></p></header>
+    <div class="toolbar">
+      <span class="tb-title">カレンダー</span>
+      <button class="text-btn" data-a="cal-today">今日</button>
+      <button class="icon-btn" data-a="search" data-icon="search" aria-label="検索"></button>
+    </div>
+    <div class="cal-head">
+      <button class="icon-btn" data-a="cal-prev" data-icon="back" aria-label="前の月"></button>
+      <h2 id="cal-title"></h2>
+      <button class="icon-btn" data-a="cal-next" data-icon="next" aria-label="次の月"></button>
+    </div>
+    <p class="cal-sum" id="cal-sum"></p>
+    <div class="cal-week"><div class="sun">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div class="sat">土</div></div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="タブ">
+  <button data-tab="photos" data-icon="photos" aria-current="page"><span>写真</span></button>
+  <button data-tab="albums" data-icon="albums"><span>アルバム</span></button>
+  <button data-tab="calendar" data-icon="calendar"><span>カレンダー</span></button>
+  <button data-tab="menu" data-icon="menu"><span>メニュー</span></button>
+</nav>
+<button class="fab" id="fab" data-icon="camera" aria-label="写真を追加"></button>
+
+<div id="selbar">
+  <button class="icon-btn" data-s="close" data-icon="close" aria-label="選択をやめる"></button>
+  <h2 id="sel-count">写真を選択</h2>
+  <button class="text-btn" data-s="all">すべて</button>
+</div>
+<div id="selactions">
+  <button data-s="album" data-icon="albums"><span>アルバムに追加</span></button>
+  <button data-s="share" data-icon="share"><span>共有</span></button>
+  <button data-s="del" data-icon="trash"><span>削除</span></button>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<input type="file" id="file-camera" class="vh" accept="image/*" capture="environment" tabindex="-1">
+<input type="file" id="file-pick" class="vh" accept="image/*" multiple tabindex="-1">
+<input type="file" id="file-restore" class="vh" accept=".zip,application/zip" tabindex="-1">
+<input type="file" id="file-ocr-camera" class="vh" accept="image/*" capture="environment" tabindex="-1">
+<input type="file" id="file-ocr-pick" class="vh" accept="image/*" tabindex="-1">
+
+<noscript><p style="padding:24px">このアプリを使うには JavaScript を有効にしてください。</p></noscript>
+<script src="recipe-words.js"></script>
+<script src="voice-fix.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
